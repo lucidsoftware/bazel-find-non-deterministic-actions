@@ -31,23 +31,26 @@ pub struct SpawnExec {
     pub listed_outputs: Vec<String>,
     pub remotable: bool,
     pub cacheable: bool,
-    pub progress_message: String,
+    // pub progress_message: String,
+    pub timeout_millis: String,
     pub mnemonic: String,
     pub actual_outputs: Vec<File>,
-    pub runner: String,
-    pub remote_cache_hit: bool,
+    // pub runner: String,
+    // pub cache_hit: bool,
     pub status: String,
     pub exit_code: i32,
     pub remote_cacheable: bool,
     pub target_label: String,
-    pub digest: Option<Digest>,
+    // pub digest: Option<Digest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct File {
     pub path: String,
-    pub digest: Digest,
+    pub digest: Option<Digest>,
+    pub is_tool: bool,
+    pub symlink_target_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

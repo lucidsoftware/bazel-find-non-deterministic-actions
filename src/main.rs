@@ -99,8 +99,10 @@ fn outputs_are_same(a: &[spawn_exec::File], b: &[spawn_exec::File]) -> bool {
             return false;
         }
 
-        if a.digest.hash != b.digest.hash {
-            return false;
+        if let (Some(digest_a), Some(digest_b)) = (a.digest.clone(), b.digest.clone()) {
+            if digest_a.hash != digest_b.hash {
+                return false;
+            }
         }
     }
 
@@ -111,10 +113,10 @@ type Sha256 = GenericArray<u8, U32>;
 
 impl SpawnExec {
     pub fn digest(&self) -> Sha256 {
-        if let Some(ref digest) = self.digest {
-            let digest = hex::decode(digest.hash.as_bytes()).expect("invalid digest");
-            GenericArray::clone_from_slice(&digest)
-        } else {
+        // if let Some(ref digest) = self.digest {
+        //     let digest = hex::decode(digest.hash.as_bytes()).expect("invalid digest");
+        //     GenericArray::clone_from_slice(&digest)
+        // } else {
             let mut hasher = sha2::Sha256::new();
             for arg in self.command_args.iter() {
                 hasher.update(arg.as_bytes());
@@ -131,11 +133,19 @@ impl SpawnExec {
             }
             for input in self.inputs.iter() {
                 hasher.update(input.path.as_bytes());
-                let digest = hex::decode(input.digest.hash.as_bytes()).expect("invalid digest");
-                hasher.update(digest);
+                if input.is_tool {
+                    hasher.update([0u8].as_ref());
+                } else {
+                    hasher.update([1u8].as_ref());
+                }
+                hasher.update(input.symlink_target_path.as_bytes());
+                if let Some(digest) = &input.digest {
+                    let bytes = hex::decode(digest.hash.as_bytes()).expect("invalid digest");
+                    hasher.update(bytes);
+                }
             }
             hasher.finalize()
-        }
+        // }
     }
 }
 
@@ -149,16 +159,19 @@ fn main() -> Result<()> {
         for spawn_exec in spawn_exec_iter(&execution_log)? {
             let spawn_exec = spawn_exec?;
 
-            let digest = spawn_exec.digest();
+            if !["CppCompile"].contains(&&*spawn_exec.mnemonic) {
+                let digest = spawn_exec.digest();
 
-            if let Some(old_spawn) = digest_to_spawn.get(&digest) {
-                if !outputs_are_same(&old_spawn.actual_outputs, &spawn_exec.actual_outputs) {
-                    if !non_deterministics_spawns.contains_key(&digest) {
-                        non_deterministics_spawns.insert(digest, [old_spawn.clone(), spawn_exec]);
+                if let Some(old_spawn) = digest_to_spawn.get(&digest) {
+                    if !outputs_are_same(&old_spawn.actual_outputs, &spawn_exec.actual_outputs) {
+                        if !non_deterministics_spawns.contains_key(&digest) {
+                            non_deterministics_spawns.insert(digest, [old_spawn.clone(), spawn_exec]);
+                        }
                     }
+                } else {
+                    // println!("Digest: {:x}", digest);
+                    digest_to_spawn.insert(digest, spawn_exec);
                 }
-            } else {
-                digest_to_spawn.insert(digest, spawn_exec);
             }
         }
     }
@@ -172,7 +185,7 @@ fn main() -> Result<()> {
             let diff = diffy::create_patch(&a_json, &b_json);
             println!(
                 "Outputs of the same action `{}` are different:",
-                &a.progress_message
+                &a.target_label
             );
             println!("{}", diff);
         }
